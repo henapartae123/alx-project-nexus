@@ -19,6 +19,7 @@ from .models import (
     PostHashtag,
     Notification,
     User,
+    Timeline
 )
 
 # -----------------------------
@@ -57,9 +58,13 @@ def get_loaders(context):
 # Graphene Types
 # -----------------------------
 class PostNode(DjangoObjectType):
+    author = graphene.Field(lambda: ProfileNode)
+    comments = graphene.List(lambda: CommentNode)
+
     class Meta:
         model = Post
         interfaces = (relay.Node,)
+        fields = "__all__"
         filter_fields = {
             'author__id': ['exact'],
             'visibility': ['exact'],
@@ -67,31 +72,77 @@ class PostNode(DjangoObjectType):
         }
 
     def resolve_author(self, info):
-        loaders = get_loaders(info.context)
-        return loaders['profile_loader'].load(self.author_id)
-        
+        return self.author
+        # loaders = get_loaders(info.context)
+        # return loaders['profile_loader'].load(self.author_id)
+
+    def resolve_comments(self, info):
+        return self.comments.all().order_by('-created_at')
+
 
 class CommentNode(DjangoObjectType):
+    author = graphene.Field(lambda: ProfileNode)
+
     class Meta:
         model = Comment
         interfaces = (relay.Node,)
         filter_fields = {
             'author__id': ['exact'],
             'post__id': ['exact'],
-            'created_at': ['lte', 'gte'],
+        }
+
+    def resolve_author(self, info):
+        loaders = get_loaders(info.context)
+        return loaders['profile_loader'].load(self.author_id)
+
+class ProfileNode(DjangoObjectType):
+    posts = DjangoFilterConnectionField(lambda: PostNode)
+    followers = DjangoFilterConnectionField(lambda: ProfileNode)
+    following = DjangoFilterConnectionField(lambda: ProfileNode)
+
+    class Meta:
+        model = Profile
+        interfaces = (relay.Node,)
+        fields = "__all__"
+        filter_fields = {
+            "display_name": ["icontains"],
+            "bio": ["icontains"],
+        }
+
+    def resolve_posts(self, info, **kwargs):
+        return Post.objects.filter(author=self).order_by("-created_at")
+    
+    # Resolve followers: users who follow this profile
+    def resolve_followers(self, info, **kwargs):
+        follower_ids = Follow.objects.filter(following=self.user).values_list('follower_id', flat=True)
+        return Profile.objects.filter(user_id__in=follower_ids)
+
+    # Resolve following: users whom this profile is following
+    def resolve_following(self, info, **kwargs):
+        following_ids = Follow.objects.filter(follower=self.user).values_list('following_id', flat=True)
+        return Profile.objects.filter(user_id__in=following_ids)
+
+class FollowNode(DjangoObjectType):
+    class Meta:
+        model = Follow
+        interfaces = (relay.Node,)
+        fields = "__all__"
+        filter_fields = {
+            "follower__username": ["exact"],
+            "following__username": ["exact"],
+        }
+
+class TimelineNode(DjangoObjectType):
+    class Meta:
+        model = Timeline
+        interfaces = (relay.Node,)
+        filter_fields = {
+            "user__username": ["exact"],
         }
 
 class ReactionNode(DjangoObjectType):
     class Meta:
         model = Reaction
-
-class ProfileNode(DjangoObjectType):
-    class Meta:
-        model = Profile
-
-class FollowNode(DjangoObjectType):
-    class Meta:
-        model = Follow
 
 class HashtagNode(DjangoObjectType):
     class Meta:
@@ -110,6 +161,8 @@ class Query(graphene.ObjectType):
     # Relay-style connection fields (support cursor pagination)
     all_posts = DjangoFilterConnectionField(PostNode)
     post = graphene.Field(PostNode, id=graphene.Int())
+    comments_for_post = graphene.List(CommentNode, post_id=graphene.Int(required=True))
+    profile_by_user = graphene.Field(ProfileNode, user_id=graphene.Int(required=True))
 
     # Feed queries
     following_feed = DjangoFilterConnectionField(PostNode, description="Posts from users you follow")
@@ -120,11 +173,19 @@ class Query(graphene.ObjectType):
         return Post.objects.filter(is_deleted=False).order_by('-created_at')
 
     @login_required
+    def resolve_comments_for_post(self, info, post_id):
+        return Comment.objects.filter(post_id=post_id).order_by('-created_at')
+    
+    @login_required
     def resolve_post(self, info, id):
         try:
             return Post.objects.get(pk=id, is_deleted=False)
         except Post.DoesNotExist:
             return None
+    
+    @login_required
+    def resolve_profile_by_user(self, info, user_id):
+        return Profile.objects.get(user_id=user_id)
 
     @login_required
     def resolve_following_feed(self, info, **kwargs):
@@ -149,6 +210,22 @@ class Query(graphene.ObjectType):
 # -----------------------------
 # Mutations
 # -----------------------------
+
+
+class FollowUser(relay.ClientIDMutation):
+    class Input:
+        user_id = graphene.ID(required=True)
+
+    ok = graphene.Boolean()
+    follow = graphene.Field(FollowNode)
+
+    @login_required
+    def mutate_and_get_payload(root, info, user_id):
+        follower = info.context.user
+        following = relay.Node.get_node_from_global_id(info, user_id, UserNode)
+
+        follow_obj, _ = Follow.objects.get_or_create(follower=follower, following=following)
+        return FollowUser(ok=True, follow=follow_obj)
 
 
 class CreateUser(graphene.Mutation):
@@ -243,6 +320,8 @@ class Mutation(graphene.ObjectType):
     create_post = CreatePost.Field()
     create_comment = CreateComment.Field()
     react_to_post = ReactToPost.Field()
+
+    follow_user = FollowUser.Field()
 
 # -----------------------------
 # Schema

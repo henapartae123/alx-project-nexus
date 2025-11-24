@@ -198,3 +198,45 @@ class Notification(models.Model):
 
     def __str__(self):
         return f"Notify {self.recipient} about {self.type}"
+    
+
+# ---------------------------------------------------------
+# TIMELINE
+# ---------------------------------------------------------
+class Timeline(models.Model):
+    """
+    Stores posts that should appear on a user's feed.
+    Fan-out on write: whenever someone posts, we create timeline rows
+    for all their followers.
+    """
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="timeline_entries"
+    )  
+    # The owner of the timeline (the follower who will see the post)
+
+    post = models.ForeignKey(
+        "Post",
+        on_delete=models.CASCADE,
+        related_name="timeline_entries"
+    )
+
+    author = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="authored_timeline_entries"
+    )  
+    # The original author of the post
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["user", "created_at"]),
+            models.Index(fields=["post"]),
+        ]
+
+    def __str__(self):
+        return f"Timeline: {self.user} -> Post {self.post_id}"
