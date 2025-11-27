@@ -192,7 +192,7 @@ class Notification(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=['recipient']),
+            models.Index(fields=['recipient', '-created_at']),
             models.Index(fields=['is_read']),
         ]
 
@@ -217,7 +217,7 @@ class Timeline(models.Model):
     # The owner of the timeline (the follower who will see the post)
 
     post = models.ForeignKey(
-        "Post",
+        Post,
         on_delete=models.CASCADE,
         related_name="timeline_entries"
     )
@@ -229,12 +229,12 @@ class Timeline(models.Model):
     )  
     # The original author of the post
 
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
         ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=["user", "created_at"]),
+            models.Index(fields=["user", "-created_at"]),
             models.Index(fields=["post"]),
         ]
 
