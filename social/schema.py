@@ -338,9 +338,9 @@ class Query(graphene.ObjectType):
         return Comment.objects.filter(post_id=post_id).select_related('author').order_by('-created_at')
     
     @login_required
-    def resolve_post(self, info, id):
+    def resolve_post(self, info, post_id):
         try:
-            return Post.objects.select_related('author').get(pk=id, is_deleted=False)
+            return Post.objects.select_related('author').get(pk=post_id, is_deleted=False)
         except Post.DoesNotExist:
             return None
     
@@ -579,7 +579,7 @@ class FollowUser(graphene.Mutation):
     follow = graphene.Field(FollowNode)
 
     class Arguments:
-        user_id = graphene.String(required=True)  # Changed from Int to String
+        user_id = graphene.String(required=True)
 
     @login_required
     def mutate(self, info, user_id):
