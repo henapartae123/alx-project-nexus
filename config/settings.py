@@ -9,6 +9,7 @@ https://docs.djangoproject.com/en/5.2/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
+import os
 import dj_database_url
 from datetime import timedelta
 from pathlib import Path
@@ -102,9 +103,9 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 DATABASES = {
     "default": dj_database_url.config(
-        default="postgres://localhost:5432/mydb",
+        default=os.getenv('DATABASE_URL'),
         conn_max_age=600,
-        ssl_require=True
+        conn_health_checks=True,
     )
 }
 
