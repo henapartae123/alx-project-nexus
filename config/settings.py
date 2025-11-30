@@ -68,6 +68,12 @@ CORS_ALLOWED_ORIGINS = [
     "https://alx-project-nexus-zmo9.onrender.com",
 ]
 
+ALLOWED_HOSTS = [
+    "localhost",
+    "127.0.0.1",
+    ".onrender.com",
+]
+
 CORS_ALLOW_CREDENTIALS = True
 
 ROOT_URLCONF = 'config.urls'
